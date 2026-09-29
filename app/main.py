@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from . import (
     anchor_calibration,
+    duration_bounds,
     engine,
     feasibility,
     reconciliation,
@@ -28,7 +29,7 @@ STATIC_DIR = BASE_DIR / "static"
 app = FastAPI(
     title="事件证据链审计台",
     description="导入多来源 JSON 事件记录，校正时钟偏差，重建可解释时间线并定位冲突链。",
-    version="1.6.0",
+    version="1.7.0",
 )
 
 
@@ -124,6 +125,14 @@ class AnchorCalibrationBody(BaseModel):
     source_b: str
     calibrated_side: str                 # "a" | "b"，在 calibrate 内严格校验
     anchors: list[AnchorItem]
+    overrides: dict[str, SourceAssumption] = Field(default_factory=dict)
+
+
+class DurationBoundsBody(BaseModel):
+    """两事件耗时约束判定：两个不同事件 + 非负有限阈值（秒），携带未保存假设。"""
+    start_event: str
+    end_event: str
+    threshold_seconds: Any               # 在 duration_bounds 内严格校验（非负/有限）
     overrides: dict[str, SourceAssumption] = Field(default_factory=dict)
 
 
@@ -510,6 +519,28 @@ def anchor_calibrate(body: AnchorCalibrationBody) -> dict[str, Any]:
             body.source_a, body.source_b, body.calibrated_side,
             anchors, overrides)
     except reconciliation.ReconcileError as exc:
+        raise HTTPException(404 if "不存在" in str(exc) else 400, str(exc)) from exc
+
+
+# ----------------------------------------------------- 两事件耗时约束判定
+
+@app.post("/api/duration-bounds")
+def event_duration_bounds(body: DurationBoundsBody) -> dict[str, Any]:
+    """两事件耗时在全部可行时间分配中的精确最小/最大值与阈值判定（只读）。
+
+    复用全量事件时间区间与全部有效先后约束（允许同刻）的差分约束联立，
+    求 t_end − t_start 的紧界（可为负），分别返回达到最小/最大值的全量
+    事件时刻见证；不是两事件各自区间直接相减。最小 > 阈值判"必超"，
+    最大 ≤ 阈值判"必不超"，其余"可能超"。全局无解时只返回矛盾路径见证、
+    不输出耗时结论；相同/未知事件、非法阈值以 4xx 明确拒绝。
+    overrides 携带页面当前含未保存的时钟假设；不受页面筛选影响，不保存假设。
+    """
+    overrides = {sid: v.model_dump(exclude_none=True)
+                 for sid, v in body.overrides.items()}
+    try:
+        return duration_bounds.duration_bounds(
+            body.start_event, body.end_event, body.threshold_seconds, overrides)
+    except duration_bounds.DurationError as exc:
         raise HTTPException(404 if "不存在" in str(exc) else 400, str(exc)) from exc
 
 

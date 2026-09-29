@@ -21,6 +21,7 @@
       ＋ 导入 JSON
     </label>
     <button class="btn" id="btn-feasibility">🧭 全局时序可行性</button>
+    <button class="btn" id="btn-duration">⏳ 耗时约束判定</button>
     <button class="btn" id="btn-reconcile">🔗 双来源对账</button>
     <button class="btn" id="btn-compare">⚖ 方案对比</button>
     <button class="btn" id="btn-sensitivity">📈 偏移敏感性</button>
@@ -176,6 +177,43 @@
   </div>
 </div>
 
+<!-- 两事件耗时约束判定抽屉 -->
+<div id="dur-overlay" class="overlay hidden" aria-hidden="true">
+  <div class="overlay-card">
+    <div class="overlay-head">
+      <h2>⏳ 两事件耗时约束判定</h2>
+      <p class="subtitle">选择起点事件、终点事件与非负有限的耗时阈值（秒），后端把<b>全部事件</b>的真实时间区间与
+        <b>全部有效先后约束</b>（允许同刻）联立，在所有可行时间分配中求 <b>t(终点) − t(起点)</b> 的精确最小值与最大值
+        （可为负），并分别给出达到端点的<b>全量事件时刻见证</b>——不是两事件各自区间直接相减。
+        最小耗时 &gt; 阈值为<b>必超</b>，最大耗时 ≤ 阈值为<b>必不超</b>，其余为<b>可能超</b>。
+        携带当前未保存的来源假设；不受页面筛选影响，只读，不保存假设或改写数据。
+        全局无解时只展示矛盾路径见证、不给耗时结论。</p>
+      <div class="overlay-actions">
+        <button class="btn tiny primary" id="dur-rerun">⟳ 重新判定</button>
+        <button class="btn tiny ghost" id="dur-close">✕ 关闭</button>
+      </div>
+    </div>
+
+    <div class="cmp-toolbar">
+      <div class="cmp-side-sel">
+        <span class="cmp-side-tag a">起点事件</span>
+        <select id="dur-start"></select>
+      </div>
+      <div class="cmp-side-sel">
+        <span class="cmp-side-tag b">终点事件</span>
+        <select id="dur-end"></select>
+      </div>
+      <div class="sens-range">
+        <label>阈值(s) <input type="number" id="dur-threshold" min="0" step="any" value="60"></label>
+      </div>
+      <button class="btn tiny primary" id="dur-run">▶ 判定</button>
+      <span id="dur-hint" class="cmp-hint"></span>
+    </div>
+
+    <div id="dur-result" class="cmp-result"></div>
+  </div>
+</div>
+
 <!-- 双来源事件对账抽屉 -->
 <div id="recon-overlay" class="overlay hidden" aria-hidden="true">
   <div class="overlay-card">
@@ -219,5 +257,6 @@
 <script src="/static/feasibility.js"></script>
 <script src="/static/retraction.js"></script>
 <script src="/static/reconciliation.js"></script>
+<script src="/static/duration.js"></script>
 </body>
 </html>

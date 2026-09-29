@@ -704,3 +704,43 @@ body {
   .recon-delta { flex-direction: row; flex-wrap: wrap; gap: 10px; }
   .anchor-row-flags { margin-left: 0; }
 }
+
+/* ------------------------------------------------ 耗时约束判定抽屉 */
+.dur-endpoints { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 9px; }
+.dur-endpoint { display: inline-flex; gap: 6px; align-items: center; }
+.dur-endpoint-role {
+  font-size: 10.5px; color: var(--muted); background: var(--bg-3);
+  border-radius: 9px; padding: 0 7px;
+}
+.dur-endpoint.start .dur-endpoint-role { color: #8fc0ff; }
+.dur-endpoint.end .dur-endpoint-role { color: #f0c273; }
+.dur-minus { color: var(--muted); font-family: var(--mono); }
+.dur-threshold {
+  font-size: 12px; font-weight: 400; color: var(--muted);
+  font-family: var(--mono); margin-left: 8px;
+}
+.dur-range { display: flex; gap: 14px; align-items: stretch; margin-bottom: 10px; }
+.dur-bound-val {
+  display: flex; flex-direction: column; gap: 2px; min-width: 132px;
+  background: var(--bg-2); border: 1px solid #222d3b; border-radius: 8px; padding: 8px 12px;
+}
+.dur-bound-val b { font-family: var(--mono); font-size: 17px; color: #8fc0ff; }
+.dur-bound-val:last-child b { color: #f0c273; }
+.dur-bound-label { font-size: 10.5px; color: var(--muted); }
+.dur-bound-sub { font-size: 10px; color: var(--muted); font-family: var(--mono); }
+.dur-range-bar {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  border: 1px dashed var(--line); border-radius: 8px; padding: 0 12px;
+  color: var(--muted); font-size: 10.5px; text-align: center;
+}
+.dur-role-tag {
+  font-size: 9px; border-radius: 8px; padding: 0 5px; margin-left: 3px;
+  vertical-align: middle;
+}
+.dur-role-tag.start { background: rgba(143,192,255,.18); color: #8fc0ff; }
+.dur-role-tag.end { background: rgba(240,194,115,.18); color: #f0c273; }
+.feas-row.dur-wit-row.is-start { border-left: 3px solid #8fc0ff; }
+.feas-row.dur-wit-row.is-end { border-left: 3px solid #f0c273; }
+.feas-verdict.warn { border-left: 3px solid var(--warn); }
+.feas-verdict.warn .feas-verdict-icon { background: rgba(232,163,61,.16); color: #f0c273; }
+.feas-verdict.warn .feas-verdict-title { color: #f0c273; }

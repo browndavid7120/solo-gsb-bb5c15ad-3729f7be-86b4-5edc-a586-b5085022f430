@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from . import (
     anchor_calibration,
+    elapsed_time,
     engine,
     feasibility,
     reconciliation,
@@ -28,7 +29,7 @@ STATIC_DIR = BASE_DIR / "static"
 app = FastAPI(
     title="事件证据链审计台",
     description="导入多来源 JSON 事件记录，校正时钟偏差，重建可解释时间线并定位冲突链。",
-    version="1.6.0",
+    version="1.7.0",
 )
 
 
@@ -124,6 +125,14 @@ class AnchorCalibrationBody(BaseModel):
     source_b: str
     calibrated_side: str                 # "a" | "b"，在 calibrate 内严格校验
     anchors: list[AnchorItem]
+    overrides: dict[str, SourceAssumption] = Field(default_factory=dict)
+
+
+class ElapsedBoundsBody(BaseModel):
+    """两事件耗时审计：起 / 终点事件 + 非负有限阈值（秒），可携带未保存假设。"""
+    start_event: str
+    end_event: str
+    threshold_seconds: Any               # 在 audit_elapsed 内严格校验（非负/有限/数值）
     overrides: dict[str, SourceAssumption] = Field(default_factory=dict)
 
 
@@ -511,6 +520,30 @@ def anchor_calibrate(body: AnchorCalibrationBody) -> dict[str, Any]:
             anchors, overrides)
     except reconciliation.ReconcileError as exc:
         raise HTTPException(404 if "不存在" in str(exc) else 400, str(exc)) from exc
+
+
+# ----------------------------------------------------- 两事件耗时精确界审计
+
+@app.post("/api/elapsed-time-bounds")
+def elapsed_time_bounds(body: ElapsedBoundsBody) -> dict[str, Any]:
+    """两事件耗时是否被证据真正约束（只读，不写库、不保存假设）。
+
+    复用现有时间闭区间与全部有效先后约束（含 source_order，允许同刻），
+    在所有可行时间分配上求 t_end − t_start 的精确最小 / 最大值（可为负），
+    分别返回达到端点的全量事件时刻见证（非两区间直接相减）。
+    最小 > 阈值判“必超”，最大 ≤ 阈值判“必不超”，其余为“可能超”。
+    全局无解时返回现有矛盾见证、不输出耗时结论；起点/终点未知或相同、
+    阈值非有限非负均以 4xx 明确拒绝。不受页面筛选影响；overrides 传页面
+    当前（含未保存）的时钟假设。
+    """
+    overrides = {sid: v.model_dump(exclude_none=True)
+                 for sid, v in body.overrides.items()}
+    try:
+        return elapsed_time.audit_elapsed(
+            body.start_event, body.end_event, body.threshold_seconds, overrides)
+    except elapsed_time.ElapsedError as exc:
+        raise HTTPException(404 if "不存在" in str(exc) else 400,
+                            str(exc)) from exc
 
 
 # ----------------------------------------------------------------- 前端

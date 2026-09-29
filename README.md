@@ -38,6 +38,13 @@
     范围，再取所有范围的**交集**。交集为空时明确列出分别决定冲突上下界的两对锚点；
     非空时给出允许的绝对 offset 范围，"采用中点"只写入左栏**未保存**假设并重算时间线
     （仍可放弃调整）。锚点重复、事件失效或来源不一致一律明确报错。
+11. **两事件耗时审计**：选定**起点事件、终点事件与非负有限阈值（秒）**，复用现有
+    时间闭区间与**全部有效先后约束**（含 source_order，**允许同刻**），在所有可行
+    时间分配中求 **终点时刻 − 起点时刻** 的**精确最小 / 最大值**（可为负），分别给出
+    达到端点的**全量事件时刻见证**——不是两事件各自区间直接相减。**最小 > 阈值**
+    判"必超"，**最大 ≤ 阈值**判"必不超"，其余为"可能超"。全局无解时展示现有矛盾
+    见证、不输出耗时结论；起终点未知或相同、阈值非法一律明确拒绝。携带页面未保存
+    假设、不受筛选影响、只读不写库。
 
 ---
 
@@ -80,6 +87,7 @@ python tests/test_feasibility.py # 纯标准库，覆盖全局时序可行性：
 python tests/test_retraction.py  # 纯标准库，覆盖约束撤销建议：最少撤销 / 多解 / 平行边 / 保护与预算限制
 python tests/test_reconciliation.py # 纯标准库，覆盖双来源对账：整数毫秒四舍五入 / 闭区间间距 / 全局最优反贪心 / 同优稳定输出 / 200 上限与拒绝
 python tests/test_anchor_calibration.py # 纯标准库，覆盖锚点校准：单对范围 / 闭区间边界 / 多锚点交集 / 冲突上下界锚点 / 漂移固定 / 未保存 offset / 0.5ms 中点 / 重复·失效·来源不一致报错 / 1～20 限制
+python tests/test_elapsed_time.py      # 纯标准库，覆盖两事件耗时审计：精确 min/max（约束收窄朴素差）/ 负界与反向约束 / 环同刻 / 必超·必不超·可能超（闭端点）/ 全量见证可行 / 全局无解无结论 / 未知·相同事件·非法阈值 / 未保存假设 / 只读 / 5000 事件
 ```
 
 ---
@@ -242,6 +250,36 @@ python tests/test_anchor_calibration.py # 纯标准库，覆盖锚点校准：�
    两侧来源相同 / 来源不存在、`calibrated_side` 不是 `a`/`b`，均返回 4xx 并逐条说明；
 6. **只读**：计算本身不写数据库、不改写事件或假设；重新对账会自动丢弃已失效的旧锚点选择。
 
+### 进一步：两事件耗时审计（⏳）
+
+"导出动作到底是不是在登出之后？从登录提交到数据导出，证据能把耗时锁定在多窄的区间、
+会不会超过 60 秒合规线？"——朴素地把两个事件的时间区间相减会忽略它们之间的先后约束，
+得到过宽的界。点右上 **⏳ 耗时审计**（API 为 `POST /api/elapsed-time-bounds`）：
+
+1. 选择**起点事件**、**终点事件**（下拉为全量事件，**不受页面筛选影响**）与
+   **非负有限阈值（秒）**，点 **▶ 计算**；请求携带左栏当前（含**未保存**调整）的
+   时钟假设。整个检查**只读**：不保存假设、不改写任何事件或约束。
+2. 后端把**全部事件的闭区间**与**全部有效约束**（含 source_order 时序边，边
+   `a→b` 要求 `t_b ≥ t_a`，**允许同刻**）联立为差分约束系统，先做与可行性检查同款的
+   SCC 压缩（环内事件取同一时刻），再在压缩 DAG 上同时求分量最早 / 最晚时刻；
+   对端点做"虚拟上界钉扎 + 反向传播"，在**所有可行时间分配**上得到
+   **终点时刻 − 起点时刻** 的**精确最小 / 最大值**，**可为负**（例如反向约束或两事件
+   无路径时，终点可能早于起点）。
+3. 结果返回三态判定：**最小值 > 阈值 → 必超**；**最大值 ≤ 阈值 → 必不超**；
+   最小值 ≤ 阈值 < 最大值 → **可能超**（证据不能锁定，存在超与不超两种分配）。
+   端点为闭区间比较（最小恰等于阈值时不算必超）。
+4. **全量事件时刻见证**：最小值与最大值各附一版**完整可行分配**——每个事件的具体
+   时刻（落在自身闭区间内、逐条满足全部约束）、起终点取值与区间余量，差值经求解器
+   自校验确为所声称的端点；可逐行展开（分批渲染，5000 事件可用），点击任意事件 ID
+   回主时间线定位。
+5. 页面同时给出**朴素两区间直接相减的结果作对照**（`lo_end − hi_start` /
+   `hi_end − lo_start`），并标明起终点之间的约束路径方向（起点可达终点 ⇒ 最小耗时
+   ≥ 0；终点可达起点 ⇒ 最大耗时 ≤ 0；同一 SCC 环内 ⇒ 耗时恒为 0），直观说明界为何
+   被约束收窄、为何不能直接拿两区间相减。
+6. **全局无解**时不输出耗时结论，只展示现有矛盾路径见证（事件 ID / 约束 ID / 两端
+   冲突界限），提示先解决矛盾；**起点或终点事件未知（404）、起终点相同、阈值为负 /
+   非数值 / NaN / 无穷**一律以 4xx 明确拒绝。
+
 ---
 
 ## 输入 JSON 格式
@@ -364,6 +402,12 @@ gap ∈ [ lo_b - hi_a ,  hi_b - lo_a ]
   复用含未保存调整的区间（固定漂移与不确定度），逐对求闭区间相交所需的 offset 增量范围
   再取交集；非空时显示绝对 offset 范围，"采用中点"只更新左栏未保存假设并重算时间线（可放弃）；
   为空时列出决定冲突上下界的两对锚点；锚点重复 / 事件失效 / 来源不一致明确报错，只读不写库。
+- **两事件耗时审计**（右上 ⏳）：选起点 / 终点事件（全量、不受筛选影响）与非负阈值（秒），
+  携带未保存假设，把全部事件闭区间 × 全部有效约束（含 source_order、允许同刻）联立，
+  在所有可行分配上求 t_end−t_start 的精确最小 / 最大值（可为负）并判必超 / 必不超 / 可能超；
+  分别给出达到端点的全量事件时刻见证（分批渲染、可点击定位），附朴素两区间差对照与
+  起终点约束路径方向说明；全局无解时展示矛盾见证、不给耗时结论；事件未知 / 相同 /
+  阈值非法明确拒绝；只读，不保存假设或改写数据。
 
 ---
 
@@ -394,6 +438,7 @@ gap ∈ [ lo_b - hi_a ,  hi_b - lo_a ]
 | POST | `/api/retraction-suggestions` | 约束撤销建议：沿矛盾路径搜索需撤销的最少人工/导入约束，原求解器复核，返回至多 5 个同样最少的方案及撤销后全量可行见证（只读预览） |
 | POST | `/api/source-reconciliation` | 双来源事件对账：复用校正区间（含未保存假设），按 actor/类型/闭区间容差做全局最优一一配对，返回配对（中点差/闭区间间距）与两侧未匹配事件（只读，每侧 ≤200，超限 400） |
 | POST | `/api/anchor-calibration` | 锚点校准：1～20 对已配对锚点 + 待校准方（a/b），复用含未保存调整的区间（固定漂移/不确定度），逐对求闭区间相交的待校准方 offset 增量范围并取交集；非空返回绝对 offset 范围与中点，为空返回决定冲突上下界的两对锚点（只读，锚点重复/事件失效/来源不一致 4xx） |
+| POST | `/api/elapsed-time-bounds` | 两事件耗时审计：复用全部事件闭区间 × 全部有效约束（含 source_order，允许同刻），在所有可行分配上求 t_end−t_start 的精确最小/最大值（可为负）及达到端点的全量事件时刻见证；最小>阈值必超、最大≤阈值必不超、否则可能超；全局无解返回矛盾见证不给结论；事件未知 404、起终点相同/阈值非法 400（只读，携带未保存 overrides，不受筛选影响） |
 | GET | `/api/sample` | 下载内置示例 JSON |
 | POST | `/api/reset` | 清空全部数据 |
 | GET | `/api/health` | 健康检查（Compose healthcheck 使用） |
@@ -729,6 +774,78 @@ curl -X POST http://localhost:8000/api/anchor-calibration \
        "anchors":[{"a":"a1","b":"b1"}]}'
 ```
 
+`/api/elapsed-time-bounds` 请求体与响应示例（只读；`overrides` 传页面当前含未保存
+的时钟假设；`threshold_seconds` 必须是非负有限数值）：
+
+```json
+// POST /api/elapsed-time-bounds
+{"start_event": "g1", "end_event": "a3", "threshold_seconds": 60,
+ "overrides": {"app-server": {"clock_offset": 50}, "mobile-app": {"clock_offset": -30}}}
+```
+
+```json
+// 可行：精确 [min,max] + 三态判定 + 两份全量见证（events 为全量事件时刻）
+{
+  "check_type": "elapsed-time-bounds",
+  "feasible": true,
+  "start_event": "g1", "end_event": "a3",
+  "threshold_seconds": 60.0, "threshold_text": "1.0 min",
+  "verdict": "must_exceed", "verdict_text": "必超",
+  "bounds": {
+    "minimum_seconds": 99.4, "minimum_text": "1.7 min",
+    "maximum_seconds": 101.3, "maximum_text": "1.7 min",
+    "naive_minimum_seconds": 98.7, "naive_maximum_seconds": 101.3,
+    "start_reaches_end": true, "end_reaches_start": false,
+    "same_component": false, "start_component": 0, "end_component": 4
+  },
+  "minimum_witness": {
+    "kind": "minimum", "elapsed": 99.4, "elapsed_text": "1.7 min",
+    "start": {"id": "g1", "time": 1789718500.3, "time_text": "…Z",
+              "lo": 1789718499.7, "hi": 1789718500.9, "in_cycle": false, "...": "..."},
+    "end":   {"id": "a3", "time": 1789718599.7, "time_text": "…Z", "...": "..."},
+    "events": [ {"id": "g1", "time": 1789718500.3, "time_text": "…Z",
+                 "lo": 1789718499.7, "hi": 1789718500.9,
+                 "slack_to_hi": 0.6, "in_cycle": false, "...": "..."}
+              /* 全部事件，各自落在闭区间内、满足全部约束，差值恰为 99.4 */ ]
+  },
+  "maximum_witness": { "kind": "maximum", "elapsed": 101.3, "...": "同上" },
+  "stats": {"event_count": 8, "constraint_count": 11, "skipped_constraint_count": 0,
+            "component_count": 8, "cycle_count": 0, "events_in_cycles": 0},
+  "summary": "在所有可行时间分配中，a3 相对 g1 的耗时都大于 1.0 min：最小也有 1.7 min……",
+  "notice": "只读检查：复用现有时间区间与全部有效约束（含 source_order）……不受页面筛选影响。"
+}
+```
+
+- `verdict`：`must_exceed`（必超，`minimum > threshold`）/
+  `must_not_exceed`（必不超，`maximum ≤ threshold`，闭端点）/
+  `possible_exceed`（可能超，区间跨越阈值）；
+- `minimum_seconds` / `maximum_seconds` 是联立全部约束后的**精确**界，
+  `naive_*` 是把两事件区间直接相减的结果——二者差异即约束真正提供的收紧；
+  界**可为负**：`start_reaches_end=false` 时下界可负，`end_reaches_start=true` 时
+  上界 ≤ 0，`same_component=true`（同一环）时两端恒为 0；
+- `minimum_witness` / `maximum_witness` 各为一版**全量事件时刻见证**（含起终点摘要、
+  时刻、所属分量、环标记、区间余量），求解器在返回前已逐条自校验可行并达到声称差值；
+- **全局无解**时响应为 `"feasible": false`、无 `verdict` / `bounds` / `*_witness`，
+  仅带形态同 `/api/temporal-feasibility` 的 `witness`（矛盾路径）。
+
+```json
+// 全局无解：只给矛盾见证，不输出耗时结论
+{"check_type": "elapsed-time-bounds", "feasible": false,
+ "start_event": "g1", "end_event": "g3", "threshold_seconds": 10.0,
+ "witness": {"head": {"event": "a1", "bound": "lo", "...": "..."},
+             "tail": {"event": "m1", "bound": "hi", "...": "..."},
+             "events": ["a1", "m1"], "steps": [{"...": "..."}]}}
+```
+
+4xx：起点或终点事件不存在 → 404；起终点相同、`threshold_seconds` 为负 / 非数值 /
+`NaN` / 无穷、事件 ID 非字符串 → 400，消息逐条说明。
+
+```bash
+curl -X POST http://localhost:8000/api/elapsed-time-bounds \
+  -H 'Content-Type: application/json' \
+  -d '{"start_event":"g1","end_event":"a3","threshold_seconds":60}'
+```
+
 交互式文档：启动后访问 `http://localhost:8000/docs`。
 
 ---
@@ -738,19 +855,20 @@ curl -X POST http://localhost:8000/api/anchor-calibration \
 ```
 .
 ├── app/
-│   ├── main.py          # FastAPI 路由：导入/假设/重算/筛选/约束/方案 CRUD/对比/敏感性/时序可行性/撤销建议/对账/锚点校准/导出/静态页
+│   ├── main.py          # FastAPI 路由：导入/假设/重算/筛选/约束/方案 CRUD/对比/敏感性/时序可行性/撤销建议/对账/锚点校准/耗时审计/导出/静态页
 │   ├── engine.py        # 区间模型、边分类、约束传播、Tarjan 环、歧义聚类、稳定签名、导出
 │   ├── feasibility.py   # 全局时序可行性：差分约束联立求解（SCC + Kahn 最长路）、最早可行时刻见证、矛盾路径
 │   ├── retraction.py    # 约束撤销建议：沿矛盾路径的冲突驱动最小撤销搜索，原求解器复核，预算/深度限制
 │   ├── reconciliation.py # 双来源事件对账：复用校正区间，整数毫秒四舍五入，Kuhn+匈牙利全局最优一一配对（反贪心/稳定输出/每侧200）
 │   ├── anchor_calibration.py # 锚点校准：1～20 对锚点逐对求闭区间相交的 offset 增量范围并取交集，冲突锚点定位，绝对 offset/中点（只读）
+│   ├── elapsed_time.py     # 两事件耗时审计：SCC 压缩 DAG 上分量最早/最晚 + 端点钉扎传播，求 t_end−t_start 精确 min/max 与全量见证（只读）
 │   ├── scenarios.py     # 命名假设方案快照 CRUD、双方案重算差异（冲突/歧义/边/时间线/参数）
 │   ├── sensitivity.py   # 偏移敏感性：临界点解析求解、稳定区间切分、逐段重算与差异配对
 │   ├── importer.py      # 多别名宽松 JSON 规范化、幂等入库、来源时序边重建
 │   ├── db.py            # SQLite 连接、建表初始化（含 scenarios 表）
 │   ├── timeutil.py      # 多格式时间戳解析（秒/毫秒/微秒/纳秒、ISO、RFC2822）
 │   ├── sample.py        # 内置示例案件
-│   └── static/          # 原生前端 index.html / style.css / app.js / compare.js / sensitivity.js / feasibility.js / retraction.js / reconciliation.js
+│   └── static/          # 原生前端 index.html / style.css / app.js / compare.js / sensitivity.js / feasibility.js / retraction.js / reconciliation.js / elapsed.js
 ├── examples/login-anomaly.json
 ├── tests/test_engine.py      # 纯标准库测试（11 项）
 ├── tests/test_scenarios.py   # 方案快照与双方案对比测试（12 项）
@@ -759,6 +877,7 @@ curl -X POST http://localhost:8000/api/anchor-calibration \
 ├── tests/test_retraction.py  # 约束撤销建议测试（12 项：最少撤销/多解/平行边/保护与预算限制）
 ├── tests/test_reconciliation.py # 双来源事件对账测试（22 项：舍入/闭区间/反贪心/同优稳定/上限拒绝/未保存假设）
 ├── tests/test_anchor_calibration.py # 锚点校准测试（21 项：单对范围/闭区间边界/交集/冲突锚点/漂移固定/未保存 offset/0.5ms 中点/重复·失效·来源不一致/1～20 限制）
+├── tests/test_elapsed_time.py # 两事件耗时审计测试（20 项：精确 min/max/朴素对照/负界/环同刻/三态闭端点/全量见证/无解无结论/入参拒绝/未保存假设/只读/5000 事件）
 ├── docker/entrypoint.sh # 启动钩子：初始化数据库后拉起 uvicorn
 ├── Dockerfile
 ├── docker-compose.yml

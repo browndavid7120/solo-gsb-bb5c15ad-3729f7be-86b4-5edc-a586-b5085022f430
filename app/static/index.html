@@ -21,6 +21,7 @@
       ＋ 导入 JSON
     </label>
     <button class="btn" id="btn-feasibility">🧭 全局时序可行性</button>
+    <button class="btn" id="btn-elapsed">⏳ 耗时审计</button>
     <button class="btn" id="btn-reconcile">🔗 双来源对账</button>
     <button class="btn" id="btn-compare">⚖ 方案对比</button>
     <button class="btn" id="btn-sensitivity">📈 偏移敏感性</button>
@@ -176,6 +177,43 @@
   </div>
 </div>
 
+<!-- 两事件耗时精确界审计抽屉 -->
+<div id="elapsed-overlay" class="overlay hidden" aria-hidden="true">
+  <div class="overlay-card">
+    <div class="overlay-head">
+      <h2>⏳ 两事件耗时审计</h2>
+      <p class="subtitle">选择<b>起点事件</b>、<b>终点事件</b>与非负有限的<b>耗时阈值（秒）</b>，
+        后端复用现有时间闭区间与<b>全部有效先后约束</b>（含 source_order，允许同刻），在所有可行时间分配中求
+        <b>终点时刻 − 起点时刻</b>的精确最小 / 最大值（可为负），分别给出达到端点的<b>全量事件时刻见证</b>——
+        不是两事件各自区间直接相减。<b>最小 &gt; 阈值</b>判必超，<b>最大 ≤ 阈值</b>判必不超，其余为可能超。
+        计算携带左栏<b>未保存</b>假设、不受页面筛选影响，只读不保存假设或改写数据。
+        全局无解时展示现有矛盾见证，不输出耗时结论。</p>
+      <div class="overlay-actions">
+        <button class="btn tiny primary" id="elapsed-run">▶ 计算</button>
+        <button class="btn tiny ghost" id="elapsed-close">✕ 关闭</button>
+      </div>
+    </div>
+
+    <div class="cmp-toolbar">
+      <div class="cmp-side-sel">
+        <span class="cmp-side-tag a">起点事件</span>
+        <select id="elapsed-start"></select>
+      </div>
+      <span class="elapsed-arrow">→</span>
+      <div class="cmp-side-sel">
+        <span class="cmp-side-tag b">终点事件</span>
+        <select id="elapsed-end"></select>
+      </div>
+      <div class="sens-range">
+        <label>阈值(s) <input type="number" id="elapsed-threshold" min="0" step="any" value="0"></label>
+      </div>
+      <span id="elapsed-hint" class="cmp-hint"></span>
+    </div>
+
+    <div id="elapsed-result" class="cmp-result"></div>
+  </div>
+</div>
+
 <!-- 双来源事件对账抽屉 -->
 <div id="recon-overlay" class="overlay hidden" aria-hidden="true">
   <div class="overlay-card">
@@ -219,5 +257,6 @@
 <script src="/static/feasibility.js"></script>
 <script src="/static/retraction.js"></script>
 <script src="/static/reconciliation.js"></script>
+<script src="/static/elapsed.js"></script>
 </body>
 </html>
